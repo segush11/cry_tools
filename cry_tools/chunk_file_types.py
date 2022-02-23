@@ -1,17 +1,14 @@
-from enum import Enum
-from struct import Struct
-from collections import namedtuple
-from dataclasses import dataclass
+from enum import IntEnum
 
-from cry_tools.chunk_file_utils import *
+import construct as cs
 
 
-class FileTypes(Enum):
+class FileTypes(IntEnum):
     FileType_Geom = 0xFFFF0000
     FileType_Anim = 0xFFFF0001
 
 
-class ChunkTypes(Enum):
+class ChunkTypes(IntEnum):
     ChunkType_ANY = 0
     ChunkType_Mesh = 0xCCCC0000
     ChunkType_Helper = 0xCCCC0001
@@ -35,59 +32,38 @@ class ChunkTypes(Enum):
     ChunkType_SourceInfo = 0xCCCC0013
 
 
-FileHeaderStruct = Struct('<7sx I I I')
-FileHeader = namedtuple('FileHeader', [
-    'signature',
-    'file_type',
-    'file_version',
-    'file_offset'
-])
+FileHeader = cs.Struct(
+    'signature' / cs.PaddedString(8, 'ascii'),
+    'file_type' / cs.Enum(cs.Int32ul, FileTypes),
+    'file_version' / cs.Hex(cs.Int32ul),
+    'file_offset' / cs.Int32ul
+)
 
 
-ChunkHeaderStruct = Struct('<I I I I')
-ChunkHeader = namedtuple('ChunkHeader', [
-    'chunk_type',
-    'chunk_version',
-    'file_offset',
-    'chunk_id',
-])
+ChunkHeader = cs.Struct(
+    'chunk_type' / cs.Enum(cs.Int32ul, ChunkTypes),
+    'chunk_version' / cs.Hex(cs.Int32ul),
+    'file_offset' / cs.Int32ul,
+    'chunk_id' / cs.Int32ul,
+)
 
 
-RangeEntityStruct = Struct('<32s i i')
-RangeEntity = namedtuple('RangeEntity', [
-    'name',
-    'start',
-    'end'
-])
+ChunkHeaders = cs.Struct(
+    'num_chunks' / cs.Int32ul,
+    'chunk_list' / cs.Array(cs.this.num_chunks, ChunkHeader)
+)
 
 
-@dataclass
-class TimingChunk0918:
-    chunk_header: ChunkHeader
-    seconds_per_tick: float
-    seconds_per_frame: float
-    ticks_per_frame: int
-    global_range: RangeEntity
+RangeEntity = cs.Struct(
+    'name' / cs.Bytes(32),
+    'start' / cs.Int32sl,
+    'end' / cs.Int32sl,
+)
 
-    @staticmethod
-    def make_from_file(input_file):
-        chunk_type, chunk_version, file_offset, chunk_id = unpack_struct(ChunkHeaderStruct, input_file)
-        chunk_header = ChunkHeader(
-            chunk_id=chunk_id,
-            chunk_type=ChunkTypes(chunk_type),
-            chunk_version=chunk_version,
-            file_offset=file_offset
-        )
 
-        seconds_per_tick, = unpack_values('<f', input_file)
-        ticks_per_frame, = unpack_values('<i', input_file)
-        seconds_per_frame = seconds_per_tick * ticks_per_frame
-        global_range = RangeEntity._make(unpack_struct(RangeEntityStruct, input_file))
-
-        return TimingChunk0918(
-            chunk_header=chunk_header,
-            seconds_per_tick=seconds_per_tick,
-            seconds_per_frame=seconds_per_frame,
-            ticks_per_frame=ticks_per_frame,
-            global_range=global_range
-        )
+TimingChunk0x918 = cs.Struct(
+    'chunk_header' / ChunkHeader,
+    'seconds_per_tick' / cs.Float32l,
+    'ticks_per_frame' / cs.Int32sl,
+    'global_range' / RangeEntity
+)
